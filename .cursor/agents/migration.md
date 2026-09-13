@@ -193,7 +193,7 @@ When all module tests pass:
 
 - Read user from USRSEC file → `SecUser` entity from `CSUSR01Y`
 - Compare password field-for-field (COBOL does not hash — replicate exactly)
-- On success: populate `CDEMO-USER-ID`, `CDEMO-USER-TYPE`, set `CDEMO-TO-TRANID`=`CM00`
+- On success: populate `CDEMO-USER-ID`, `CDEMO-USER-TYPE`; then `XCTL` by user type — admin (`CDEMO-USRTYP-ADMIN`) → `COADM01C` (`CA00`), otherwise → `COMEN01C` (`CM00`). COBOL never assigns `CDEMO-TO-TRANID`.
 
 ### Menu (`COMEN01C`)
 

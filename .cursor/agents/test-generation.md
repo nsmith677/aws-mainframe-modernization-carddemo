@@ -15,7 +15,7 @@ There is **no COBOL compiler or CICS runtime** in this repo and **no existing te
 
 - **Java 21**, **JUnit 5** (Jupiter), **AssertJ** or Hamcrest for assertions
 - Tests live under `modernization/carddemo/src/test/java/` (create package structure matching the module)
-- Production Java does not exist yet — tests **must fail** (compilation may require stub interfaces; prefer test-only scaffolding that fails at runtime with clear messages)
+- Production Java does not exist yet — tests **must fail** at runtime (compilation may require stub interfaces; prefer test-only scaffolding that calls `fail(...)` with a clear message). Do **not** use `@Disabled`: skipped tests make `mvn test` succeed and bypass the Migration and Verification gates.
 - COBOL under `app/` is **read-only**
 
 ## Prerequisites
@@ -117,11 +117,11 @@ class <Program>CharacterizationTest {
     class ValidationFailures { ... }
 
     @Test
-    @DisplayName("valid user credentials → navigate to CM00")
-    void validSignon_navigatesToMainMenu() {
-        // given: COMMAREA with CDEMO-PGM-ENTER, map input fields from CSUSR01Y fixture
+    @DisplayName("valid regular user credentials → navigate to COMEN01C")
+    void validSignon_regularUser_navigatesToMainMenu() {
+        // given: COMMAREA with CDEMO-PGM-ENTER, map input fields from CSUSR01Y fixture (non-admin)
         // when: invoke <Program>Service.process(request)  [stub — will fail until Migration Agent]
-        // then: assert CDEMO-TO-TRANID = "CM00", CDEMO-TO-PROGRAM = "COMEN01C", user fields set
+        // then: assert XCTL to COMEN01C (CM00); COBOL does not assign CDEMO-TO-TRANID
     }
 }
 ```
@@ -149,7 +149,7 @@ interface Cosgn00cService {
 }
 ```
 
-Tests reference the interface and use `@Disabled("Awaiting migration")` OR assert `fail("Not yet migrated")` until the Migration Agent provides the implementation. Prefer interfaces in `src/main/java` only if the Migration Agent will implement them; otherwise keep stubs in test sources.
+Tests reference the interface and must assert `fail("Not yet migrated")` (or otherwise fail at runtime) until the Migration Agent provides the implementation. **Do not** use `@Disabled` — JUnit skips disabled tests, so `mvn test` exits success and later pipeline gates can complete without any characterization assertions running. Prefer interfaces in `src/main/java` only if the Migration Agent will implement them; otherwise keep stubs in test sources.
 
 ### 5. Document coverage matrix
 
@@ -165,7 +165,7 @@ Create `modernization/carddemo/src/test/java/com/carddemo/<area>/<program>/COVER
 
 - Test against `CSUSR01Y` record layout; user data ultimately from USRSEC VSAM (no ASCII file — derive fixtures from copybook field sizes and COBOL validation logic)
 - Cover: blank user, blank password, invalid combination, valid user, valid admin, PF3 exit
-- Assert navigation to `COMEN01C` / trans `CM00` on success
+- On success, assert the COBOL `XCTL` destination by user type: admin (`CDEMO-USRTYP-ADMIN`) → `COADM01C` (admin menu, `CA00`); all other users → `COMEN01C` (regular menu, `CM00`). Do not assert `COMEN01C`/`CM00` for every success. COBOL never assigns `CDEMO-TO-TRANID`.
 
 ### Menu (`COMEN01C` / CM00)
 

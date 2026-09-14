@@ -1,0 +1,95 @@
+---
+description: >-
+  Orchestrates CardDemo COBOL-to-Spring Boot migration by delegating to four
+  project subagents in strict order. Use when the user asks to migrate, inventory,
+  modernize, or convert CardDemo COBOL programs.
+alwaysApply: true
+---
+
+# CardDemo COBOL Migration Orchestration
+
+This repository migrates the AWS CardDemo mainframe application from COBOL/CICS/VSAM to **Java 21 + Spring Boot 3 + JUnit 5**. COBOL sources under `app/` are **read-only artifacts**. All migrated code, tests, and backlog live under `modernization/`.
+
+## Parent agent rule: delegate, never migrate
+
+When the user asks to **inventory**, **migrate**, **modernize**, **convert**, or otherwise work on CardDemo COBOL modernization, you (the parent agent) **must not** write COBOL-to-Java conversions, characterization tests, or inventory backlogs yourself. Instead, delegate to the matching project subagent in `.cursor/agents/`.
+
+| Task | Subagent file | Subagent name |
+|------|---------------|---------------|
+| Crawl codebase, classify modules, write prioritized backlog | `.cursor/agents/inventory.md` | `inventory` |
+| Write JUnit 5 characterization tests for one module | `.cursor/agents/test-generation.md` | `test-generation` |
+| Convert one module to Spring Boot until tests pass | `.cursor/agents/migration.md` | `migration` |
+| Verify behavior, refactor to idiomatic Java, keep tests green | `.cursor/agents/verification-modernization.md` | `verification-modernization` |
+
+## Pipeline order (strict)
+
+Process **one module at a time** through the full pipeline before starting the next:
+
+```
+Inventory → Test Generation → Migration → Verification → (next module)
+```
+
+1. **Inventory** — produces `modernization/backlog/inventory.md` (skip if backlog exists and user only wants to migrate a specific module)
+2. **Test Generation** — writes failing JUnit 5 tests for the target module
+3. **Migration** — implements Java until that module's tests pass
+4. **Verification** — proves equivalence, modernizes Java, marks module `verified`
+
+Do not skip steps. Do not run Migration before tests exist. Do not modernize during Migration.
+
+## Module selection
+
+- If the user names a program (e.g. `COSGN00C`), use that module.
+- Otherwise, read `modernization/backlog/inventory.md` and pick the highest-priority module whose status matches the current pipeline step:
+  - `pending` → Test Generation (run Inventory first if no backlog)
+  - `tests-written` → Migration
+  - `migrated` → Verification
+  - `verified` → next `pending` module (Test Generation)
+
+## What the parent agent may do directly
+
+- Answer questions about migration strategy, architecture, or CardDemo structure
+- Read `app/` and `modernization/` files to explain status
+- Invoke subagents with clear module assignments and context
+- Track progress across the pipeline and report to the user
+- Run `mvn test` or `git status` to report results **after** a subagent completes
+
+## What the parent agent must not do
+
+- Translate COBOL paragraphs to Java
+- Write characterization tests or edit expected test values to match incorrect Java
+- Refactor migrated Java for style (that is Verification's job)
+- Edit files under `app/`
+- Bootstrap the full Spring Boot application beyond what subagents create
+- Commit changes unless the user explicitly asks
+- Work on multiple modules in parallel
+
+## Key paths
+
+| Path | Purpose |
+|------|---------|
+| `app/cbl/`, `app/cpy/`, `app/bms/`, `app/jcl/` | Read-only COBOL sources |
+| `app/data/ASCII/` | Sample data for test fixtures |
+| `app/cpy/COCOM01Y.cpy` | Shared COMMAREA (`CDEMO-*` fields) |
+| `modernization/backlog/inventory.md` | Prioritized module backlog |
+| `modernization/carddemo/` | Spring Boot application (created on first migration) |
+
+## Optional modules (lowest priority)
+
+Defer unless the user explicitly requests them:
+
+- `app/app-authorization-ims-db2-mq/` — IMS/DB2/MQ authorization
+- `app/app-transaction-type-db2/` — DB2 transaction types
+- `app/app-vsam-mq/` — MQ integration (CDRD, CDRA)
+
+## Invoking subagents
+
+When delegating, provide the subagent:
+
+1. The **module name** (e.g. `COSGN00C`)
+2. The **current pipeline step** expected
+3. Paths to backlog, tests, and COBOL source
+4. Instruction to update `inventory.md` status when done
+
+Example delegation prompt:
+
+> Migrate module COSGN00C. Backlog at modernization/backlog/inventory.md (rank 1, status: tests-written). Tests at modernization/carddemo/src/test/java/com/carddemo/online/cosgn00c/. COBOL at app/cbl/COSGN00C.cbl. Run the migration agent workflow until Cosgn00cCharacterizationTest passes. Do not modernize or start the next module.
